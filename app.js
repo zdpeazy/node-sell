@@ -1,46 +1,80 @@
-var express = require('express');
-var path = require('path');
-var favicon = require('serve-favicon');
-var logger = require('morgan');
-var cookieParser = require('cookie-parser');
-var bodyParser = require('body-parser');
+import express from 'express';
+import db from './mongodb/db.js';
+import config from 'config-lite';
+import router from './routes/index.js'; //路由
+import cookieParser from 'cookie-parser';
+import session from 'express-session';
+import connectMongo from 'connect-mongo';
+import winston from 'winston';
+import expressWinston from 'express-winston';
+import history from 'connect-history-api-fallback';
+import path from 'path';
 
-var index = require('./routes/index');
-var users = require('./routes/users');
+const app = express();
 
-var app = express();
+app.all('*', (req, res, next) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || '*');
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.header("Access-Control-Allow-Methods", "PUT,POST,GET,DELETE,OPTIONS");
+    res.header("Access-Control-Allow-Credentials", true); //可以带cookies
+  res.header("X-Powered-By", '3.2.1')
+  if (req.method == 'OPTIONS') {
+    res.send(200);
+  } else {
+    next();
+  }
+});
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'jade');
-
-// uncomment after placing your favicon in /public
-//app.use(favicon(path.join(__dirname, 'public', 'favicon.ico')));
-app.use(logger('dev'));
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
+const MongoStore = connectMongo(session);
 
-app.use('/', index);
-app.use('/users', users);
+// 设置session 并且存库
+app.use(session({
+  name: config.session.name,
+  secret: config.session.secret,
+  resave: true, // 是指每次请求都重新设置session cookie，假设你的cookie是10分钟过期，每次请求都会再设置10分钟
+  saveUninitialized: false, // 是指无论有没有session cookie，每次请求都设置个session cookie ，默认给个标示为 connect.sid
+  cookie: config.session.cookie,
+  store: new MongoStore({ // 存库
+    url: config.url 
+  })
+}));
 
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  var err = new Error('Not Found');
-  err.status = 404;
-  next(err);
+// 使用winston和express-weinston记录日志
+
+app.use(expressWinston.logger({
+    transports: [
+        new (winston.transports.Console)({
+          json: true,
+          colorize: true
+        }),
+        new winston.transports.File({
+          filename: 'logs/success.log'
+        })
+    ]
+}));
+
+app.use(expressWinston.errorLogger({
+  transports: [
+    new winston.transports.Console({
+      json: true,
+      colorize: true
+    }),
+    new winston.transports.File({
+      filename: 'logs/error.log'
+    })
+  ]
+}));
+
+app.use(history());
+app.use((err, req, res, next) => {
+  res.status(404).send('未找到当前路由');
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
+app.listen(config.port);
 
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
-});
 
-module.exports = app;
+
+
+
+
