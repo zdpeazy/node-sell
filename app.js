@@ -66,6 +66,7 @@ app.use(expressWinston.errorLogger({
   ]
 }));
 
+router(app);
 app.use(history());
 app.use((err, req, res, next) => {
   res.status(404).send('未找到当前路由');
